@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tatar-text-detoxification"
+version = "0.1.0"
+description = "Low-resource Tatar text detoxification with synthetic data, mT5 and lightweight baselines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Vladimir Garanin"}]
+dependencies = [
+  "torch>=2.2",
+  "transformers>=4.46,<5",
+  "datasets>=2.16",
+  "accelerate>=0.26",
+  "sentencepiece>=0.1.99",
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "scikit-learn>=1.4",
+  "xgboost>=2.0",
+  "gensim>=4.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+tatar-detox-build = "tatar_detox.synthetic:main"
+tatar-detox-train = "tatar_detox.train:main"
+tatar-detox-infer = "tatar_detox.infer:main"
+tatar-detox-lexical = "tatar_detox.baselines.lexical:main"
+tatar-detox-w2v-xgb = "tatar_detox.baselines.word2vec_xgb:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
