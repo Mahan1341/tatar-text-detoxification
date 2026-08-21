@@ -21,6 +21,7 @@ dependencies = [
   "scikit-learn>=1.4",
   "xgboost>=2.0",
   "gensim>=4.3",
+  "sacrebleu>=2.4,<3",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ dev = ["pytest>=8"]
 tatar-detox-build = "tatar_detox.synthetic:main"
 tatar-detox-train = "tatar_detox.train:main"
 tatar-detox-infer = "tatar_detox.infer:main"
+tatar-detox-evaluate = "tatar_detox.evaluate:main"
 tatar-detox-lexical = "tatar_detox.baselines.lexical:main"
 tatar-detox-w2v-xgb = "tatar_detox.baselines.word2vec_xgb:main"
 
