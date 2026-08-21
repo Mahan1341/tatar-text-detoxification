@@ -1,21 +1,23 @@
 # Tatar Text Detoxification
 
-Low-resource NLP project for rewriting toxic Tatar text into a more neutral form while preserving its meaning.
+**Solo low-resource NLP project for toxic-to-neutral rewriting in Tatar.**
 
-The original system was developed independently for **ИИ-ЗАМАН Хак 2025**. This repository is a cleaned reconstruction of that work: historical experiments are documented separately, while the runnable code fixes issues discovered during recovery.
+Originally developed for [ИИ-ЗАМАН Хак 2025](https://airi.net/ru/hackathon/aizaman-2025/), the project covers the full pipeline from data construction to model training, inference, baselines and retrospective evaluation.
 
-## Overview
+## Highlights
 
-The project explores several approaches to Tatar text detoxification:
-
-- synthetic toxic/clean pair generation from a clean Tatar corpus;
-- `google/mt5-small` fine-tuning for sequence-to-sequence detoxification;
-- a lexical delete/replace baseline;
-- a Tatar2Vec mean-embedding + XGBoost toxicity gate;
-- hybrid mT5 inference followed by lexical post-processing.
+- built **200,000 synthetic toxic → clean pairs** from a large clean Tatar news corpus;
+- fine-tuned **`google/mt5-small`** for sequence-to-sequence detoxification;
+- implemented lexical and **Tatar2Vec + XGBoost** baselines;
+- explored hybrid neural + rule-based inference;
+- recovered and evaluated historical outputs on **600 human-written Tatar detoxification references**;
+- reconstructed the original hackathon work into an installable package with CLI tools, tests and CI on Python 3.10/3.12.
 
 ```text
 clean Tatar corpus
+      |
+      v
+sentence extraction + filtering
       |
       v
 synthetic toxicity injection
@@ -23,49 +25,84 @@ synthetic toxicity injection
       v
 200k toxic -> clean pairs
       |
-      +-----------------------+
-      |                       |
-      v                       v
-  mT5-small          Tatar2Vec + XGBoost
-      |                       |
-      v                       v
- generation            lexical cleaner
-      |
-      v
-optional lexical post-processing
+      +---------------------------+
+      |                           |
+      v                           v
+  mT5-small              lightweight baselines
+      |                  lexical / Tatar2Vec+XGB
+      v                           |
+ neural generation               |
+      +------------+--------------+
+                   v
+          evaluation / hybrid cleanup
 ```
 
-## Recovered historical experiment
+## Problem
 
-The surviving notebook and local artifacts establish the following data pipeline:
+The task is to rewrite toxic or aggressive Tatar text into a neutral form while preserving as much of the original meaning as possible.
+
+For a low-resource language, the main difficulty is not only model choice but also the lack of large paired detoxification datasets. The project therefore treats **data construction as a first-class part of the solution** rather than assuming ready-made training pairs.
+
+## Synthetic training data
+
+The recovered historical notebook used the `news_clean` split of [`veryrealtatarperson/tt-azatliq-crawl`](https://huggingface.co/datasets/veryrealtatarperson/tt-azatliq-crawl).
 
 | Stage | Recovered count |
 | --- | ---: |
 | Source articles | 72,077 |
 | Extracted sentences | 1,664,150 |
 | Filtered clean sentences | 1,057,652 |
-| Synthetic toxic/clean pairs | 200,000 |
+| Synthetic toxic/clean pairs | **200,000** |
 
-The clean source was the `news_clean` split of [`veryrealtatarperson/tt-azatliq-crawl`](https://huggingface.co/datasets/veryrealtatarperson/tt-azatliq-crawl). Synthetic corruption included toxic word insertion/replacement, aggressive phrases, capitalization, punctuation noise, local word swaps and spacing noise.
+Clean sentences were corrupted with a mixture of:
 
-The recovered mT5 training run used:
+- toxic-word insertion and replacement;
+- aggressive phrases;
+- capitalization and punctuation noise;
+- local word swaps;
+- spacing noise and conversational artifacts.
+
+The original clean sentence was used as the target.
+
+This strategy made mT5 fine-tuning possible without a large manually aligned Tatar detoxification corpus.
+
+## Neural model
+
+The main neural approach fine-tunes **mT5-small** with a `detox:` task prefix.
+
+Recovered historical configuration:
 
 - maximum sequence length: 128;
 - learning rate: `3e-4`;
 - train batch size: 4;
 - gradient accumulation: 8;
 - effective batch size: 32;
-- linear LR schedule;
+- linear learning-rate schedule;
 - 1,000 warmup steps;
 - planned training: 3 epochs.
 
-The run stopped at roughly step 6,500 (~1.09 epochs). The best saved checkpoint was **step 2,000**, selected by validation loss `0.4895`.
+The historical run continued to roughly step 6,500 (~1.09 epochs). The best saved checkpoint was **step 2,000**, selected by validation loss **0.4895**.
 
-That value is a recovered training loss, **not an official hackathon score**.
+That value is a training loss used for checkpoint selection, **not an official hackathon score**.
 
-## Post-hoc benchmark on 600 public Tatar references
+## Baselines and model behavior
 
-A later-publicly available Tatar detoxification reference set contains the same **600/600 toxic inputs** as the recovered development files. This makes it possible to evaluate the surviving outputs retrospectively against human-written detoxifications.
+Two lightweight alternatives were explored alongside mT5:
+
+1. **Lexical cleaner** — targeted deletion/replacement of known toxic expressions.
+2. **Tatar2Vec + XGBoost gate** — mean Word2Vec sentence embeddings classify whether a sentence should be passed through the lexical cleaner.
+
+Retrospective evaluation showed a useful low-resource NLP trade-off rather than a single universally best method:
+
+- neural generation substantially changes the input and can remove toxic content that is difficult to handle with exact string rules;
+- conservative lexical methods preserve the source text very well when toxicity is predominantly lexical;
+- raw seq2seq generation can over-edit, so a hybrid or gated approach is often preferable when meaning preservation matters.
+
+That observation motivated keeping both neural and lightweight approaches in the reconstructed project instead of presenting one model in isolation.
+
+## Post-hoc benchmark on 600 human references
+
+After the hackathon, a public Tatar detoxification reference set became available containing the **same 600/600 toxic inputs** as the recovered development files. This allowed the surviving systems to be evaluated against human-written detoxifications.
 
 | System | chrF++ ↑ | Token F1 to gold ↑ | Source similarity ↑ | Rows changed | Toxic-lexicon proxy ↓ |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -74,36 +111,27 @@ A later-publicly available Tatar detoxification reference set contains the same 
 | Raw mT5 | 69.98 | 0.7095 | 0.8728 | 88.5% | 5.2% |
 | Tatar2Vec + XGBoost + rules | **80.09** | 0.7685 | **0.9863** | 17.2% | 4.3% |
 
-The benchmark exposes the main engineering trade-off clearly. The recovered raw mT5 pipeline edits aggressively and removes much lexical toxicity, but it also changes far more text and agrees less with the human references. The small lexical baseline is much more conservative and, on these reference-based diagnostics, is surprisingly competitive.
+The table should be read as a **behavior analysis**, not as an official leaderboard reconstruction. In particular:
 
-The human references themselves are conservative edits, so the unchanged input already receives a high chrF++ score. **chrF++ is therefore not presented as a standalone detoxification score.** The `Toxic-lexicon proxy` is only the percentage of rows containing terms from the small recovered historical blacklist; it is not the official TextDetox toxicity classifier.
+- human detoxifications are conservative, so unchanged input already receives a high reference-overlap score;
+- `Toxic-lexicon proxy` only checks the small recovered historical blacklist and is **not** the official TextDetox toxicity classifier;
+- the raw mT5 output shown here is a recovered historical inference variant, not the corrected reconstructed training pipeline.
 
-Full methodology and caveats: [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
+The main takeaway is that **model complexity alone was not enough**: in this low-resource setting, preserving meaning required balancing neural rewriting with conservative editing.
 
-## Why synthetic data?
+Full methodology: [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
 
-A large paired Tatar detoxification corpus was not available during the hackathon. The workaround was to start from clean Tatar sentences and corrupt them synthetically, using the original sentence as the target.
+## Reconstruction improvements
 
-This made fine-tuning possible but introduced important limitations:
-
-- formal news text differs from toxic user-generated text;
-- replacing an original word destroys information that the target still asks the model to reconstruct;
-- synthetic toxicity is more lexical and predictable than real-world toxicity;
-- dictionary-based cleaning can therefore be unusually competitive.
-
-These limitations are documented rather than hidden because they materially affect the result.
-
-## Clean reconstruction vs. historical code
-
-The runnable implementation fixes several issues found during recovery:
+The public code is a cleaned reconstruction, not a raw dump of the hackathon directory. Several issues discovered while recovering the project are fixed in the current implementation:
 
 - target sequences are dynamically padded and padding labels use `-100`, so padded positions do not contribute to seq2seq loss;
 - paired examples are split before constructing the Word2Vec/XGBoost classification dataset, reducing pair leakage;
-- training, inference, evaluation and baselines are separate modules;
+- training, inference, evaluation and baselines are separated into reusable modules;
 - the lexical postprocessor no longer lowercases every generated sentence;
 - competition inputs, generated submissions and model checkpoints are not committed to Git.
 
-For the original experiment timeline and recovered checkpoint history, see [`docs/EXPERIMENT_HISTORY.md`](docs/EXPERIMENT_HISTORY.md).
+The historical experiment timeline and recovered checkpoint history are documented in [`docs/EXPERIMENT_HISTORY.md`](docs/EXPERIMENT_HISTORY.md).
 
 ## Installation
 
@@ -125,7 +153,7 @@ tatar-detox-build \
   --seed 42
 ```
 
-The public reconstruction preserves the recovered corruption mechanism with a compact lexicon distilled from the historical lists. Exact historical intermediate datasets are not redistributed.
+The reconstruction preserves the recovered corruption mechanism with a compact lexicon distilled from the historical lists. Exact historical intermediate datasets are not redistributed.
 
 ## Fine-tune mT5-small
 
@@ -213,15 +241,14 @@ The evaluator reports exact match, chrF++, character similarity, token F1, sourc
 │       └── word2vec_xgb.py
 ├── tests/
 ├── .gitignore
-├── LICENSE
 └── pyproject.toml
 ```
 
 ## Status
 
-The historical experiment has been reconstructed from surviving notebooks, scripts, checkpoints and generated TSV files. The code here is a reproducible cleanup, not a claim that the original hackathon run can be reproduced byte-for-byte.
+The historical experiment was reconstructed from surviving notebooks, scripts, checkpoints and generated TSV files. The current code is a reproducible cleanup rather than a claim that the original hackathon environment can be reproduced byte-for-byte.
 
-No reliable official Codabench score or final leaderboard position was recovered, so this repository does not claim one.
+No reliable official Codabench score or final leaderboard position was recovered, so the repository does not claim one.
 
 ## Author
 
