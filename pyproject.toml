@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Low-resource Tatar text detoxification with synthetic data, mT5 and lightweight baselines"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
 authors = [{name = "Vladimir Garanin"}]
 dependencies = [
   "torch>=2.2",
